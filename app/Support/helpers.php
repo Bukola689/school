@@ -1,17 +1,5 @@
 <?php
 
-use App\Facades\Auth;
-use App\Models\Business;
-use Carbon\CarbonInterface;
-use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Str;
-use libphonenumber\NumberParseException;
-use Spatie\Activitylog\Contracts\Activity;
-use Symfony\Component\HttpKernel\Exception\HttpException;
-use Symfony\Component\Mime\MimeTypes;
-
 if (! function_exists('parse_url_query_string')) {
     /**
      * Extract the URL query string as an associative array.
@@ -31,4 +19,6 @@ if (! function_exists('parse_url_query_string')) {
 
         return $output;
     }
-}
+
+    
+   }

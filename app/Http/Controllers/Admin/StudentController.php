@@ -8,9 +8,17 @@ use App\Models\Student;
 use App\Http\Resources\StudentResource;
 use App\Http\Requests\StoreStudentRequest;
 use App\Http\Requests\UpdateStudentRequest;
+use App\Repository\Admin\StudentRepository;
+use Illuminate\Support\Facades\Auth;
 
 class StudentController extends Controller
 {
+    public $student;
+
+    public function __construct(StudentRepository $student)
+    {
+        $this->student = $student;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -18,7 +26,13 @@ class StudentController extends Controller
      */
     public function index()
     {
-        $students = Student::orderBy('created_at', 'DESC')->get();
+        $students = cache()->rememberForever('student:all', 60, function () {
+            return Student::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($students->isEmpty()) {
+            return response()->json('student Is Empty');
+        }
 
         return StudentResource::collection($students);
     }
@@ -41,14 +55,16 @@ class StudentController extends Controller
      */
     public function store(StoreStudentRequest $request)
     {
-        $student = new Student;
-        $student->user_id = $request->input('user_id');
-        $student->parent_firstName = $request->input('parent_firstName');
-        $student->parent_lastName = $request->input('parent_lastName');
-        $student->parent_address = $request->input('parent_address');
-        $student->save();
+      $data = $request->all();
 
-        return new StudentResource($student);
+      $this->student->saveStudent($request, $data);
+
+      cache()->forget('student:all');
+
+      return response()->json([
+        'message' => 'Student Saved Successfully'
+      ]);
+
     }
 
     /**
@@ -57,9 +73,19 @@ class StudentController extends Controller
      * @param  \App\Models\Student  $student
      * @return \Illuminate\Http\Response
      */
-    public function show(Student $student)
+    public function show($id)
     {
-        return new StudentResource($student);
+        $student = Student::find($id);
+
+        if(! $student) {
+            return response()->json('student Not Found');
+        }
+
+        $studentShow = cache()->rememberForever('student:'. $student->id, function () use($student) {
+            return $student;
+        });
+
+        return new StudentResource($studentShow);
     }
 
     /**
@@ -80,24 +106,24 @@ class StudentController extends Controller
      * @param  \App\Models\Student  $student
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateStudentRequest $request, Student $student)
-    {
-        
-        $student->first_name = $request->input('first_name');
-        $student->last_name = $request->input('last_name');
-        $student->age = $request->input('age');
-        $student->occupation_id = $request->input('occupation_id');
-        $student->gender = $request->input('gender');
-        $student->d_o_b = $request->input('d_o_b');
-        $student->phone_number = $request->input('phone_number');
-        $student->country_id = $request->input('country_id');
-        $student->state_id = $request->input('state_id');
-        $student->local_government_id = $request->input('local_government_id');
-        $student->address = $request->input('address');
-        
-        $student->update();
+    public function update(UpdateStudentRequest $request, $id)
+    {  
+        $student = Student::find($id);
 
-        return new StudentResource($student);
+        if(! $student) {
+            return response()->json('student Not Found');
+        }
+        
+        $data = $request->all();
+
+        $this->student->updateStudent($request, $student, $data);
+
+        cache()->forget('student:'. $student->id);
+        cache()->forget('student:all');
+
+        return response()->json([
+            'message' => 'Student Updated Suucessfully'
+        ]);
     }
 
     /**
@@ -106,9 +132,20 @@ class StudentController extends Controller
      * @param  \App\Models\Student  $student
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Student $student)
+    public function destroy($id)
     {
-        $student = $student->delete();
+       // $student->delete();
+
+       $student = Student::find($id);
+
+       if(! $student) {
+           return response()->json('student Not Found');
+       }
+
+        $this->student->removeStudent($student);
+
+        cache()->forget('student:'. $student->id);
+        cache()->forget('student:all');
 
         return response()->json([
             'message' => 'Student Deleted Successfully !'

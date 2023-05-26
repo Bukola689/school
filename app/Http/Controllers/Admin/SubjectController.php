@@ -1,14 +1,22 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Subject;
 use App\Http\Resources\SubjectResource;
 use App\Http\Requests\StoreSubjectRequest;
 use App\Http\Requests\UpdateSubjectRequest;
+use App\Repository\Admin\SubjectRepository;
 
 class SubjectController extends Controller
 {
+    public $subject;
+
+    public function __construct(SubjectRepository $subject)
+    {
+        $this->subject = $subject;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +24,13 @@ class SubjectController extends Controller
      */
     public function index()
     {
-        $subjects = Subject::orderBy('created_at', 'DESC')->get();
+        $subjects = cache()->rememberForever('subject:all', function () {
+            return Subject::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($subjects->isEmpty()) {
+            return response()->json('subjects Is Empty');
+        }
 
         return SubjectResource::collection($subjects);
     }
@@ -39,13 +53,15 @@ class SubjectController extends Controller
      */
     public function store(StoreSubjectRequest $request)
     {
-        $subject = new Subject;
-        $subject->class_type_id = $request->input('class_type_id');
-        $subject->name = $request->input('name');
-        $subject->code = $request->input('code');
-        $subject->save();
+       $data = $request->all();
 
-        return new SubjectResource($subject);
+       $this->subject->saveSubject($request, $data);
+
+       cache()->forget('subject:all');
+
+        return response()->json([
+            'message' => 'Subject Saved Successfully'
+        ]);
     }
 
     /**
@@ -54,9 +70,19 @@ class SubjectController extends Controller
      * @param  \App\Models\Subject  $subject
      * @return \Illuminate\Http\Response
      */
-    public function show(Subject $subject)
+    public function show($id)
     {
-        return new SubjectResource($subject);
+        $subject = Subject::find($id);
+
+        if(! $subject) {
+            return response()->json('subject Not Found');
+        }
+
+        $subjectShow = cache()->rememberForever('subject:'. $subject->id, function () use($subject) {
+            return $subject;
+        });
+
+        return new SubjectResource($subjectShow);
     }
 
     /**
@@ -77,14 +103,25 @@ class SubjectController extends Controller
      * @param  \App\Models\Subject  $subject
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateSubjectRequest $request, Subject $subject)
+    public function update(UpdateSubjectRequest $request,  $id)
     {
-        $subject->class_type_id = $request->input('class_type_id');
-        $subject->name = $request->input('name');
-        $subject->code = $request->input('code');
-        $subject->update();
+        $subject = Subject::find($id);
 
-        return new SubjectResource($subject);
+        if(! $subject) {
+            return response()->json('subject Not Found');
+        }
+
+        $data = $request->all();
+
+       $this->subject->updateSubject($request, $subject, $data);
+
+       cache()->forget('subject:'. $subject->id);
+       cache()->forget('subject:all');
+
+
+        return response()->json([
+            'message' => 'Subject Update Successfully'
+        ]);
     }
 
     /**
@@ -93,9 +130,19 @@ class SubjectController extends Controller
      * @param  \App\Models\Subject  $subject
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Subject $subject)
+    public function destroy($id)
     {
-        $subject = $subject->delete();
+        $subject = Subject::find($id);
+
+        if(! $subject) {
+            return response()->json('subject Not Found');
+        }
+      
+        $this->subject->removeSubject($subject);
+
+        cache()->forget('subject:'. $subject->id);
+        cache()->forget('subject:all');
+
 
         return response()->json([
             'message' => 'Subject Deleted Successfully !'

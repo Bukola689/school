@@ -1,14 +1,24 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Examination;
 use App\Http\Resources\ExaminationResource;
 use App\Http\Requests\StoreExaminationRequest;
 use App\Http\Requests\UpdateExaminationRequest;
+use App\Repository\Admin\Examination\ExaminationRepository;
+use Illuminate\Filesystem\Cache;
 
 class ExaminationController extends Controller
 {
+    public $examination;
+
+    public function __construct( ExaminationRepository $examination)
+    {
+        $this->examination = $examination;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +26,13 @@ class ExaminationController extends Controller
      */
     public function index()
     {
-        $examinations = Examination::orderBy('created_at', 'DESC')->get();
+        $examinations = cache()->rememberForever('examination:all', function () {
+            return Examination::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($examinations->isEmpty()) {
+            return response()->json('Examination Is Empty');
+        }
 
         return ExaminationResource::collection($examinations);
     }
@@ -39,15 +55,16 @@ class ExaminationController extends Controller
      */
     public function store(StoreExaminationRequest $request)
     {
-        $examination = new Examination;
-        $examination->class_type_id = $request->input('class_type_id');
-        $examination->teacher_id = $request->input('teacher_id');
-        $examination->subject_id = $request->input('subject_id');
-        $examination->student_id = $request->input('student_id');
-        $examination->mark = $request->input('mark');
-        $examination->save();
+        $data = $request->all();
 
-        return new ExaminationResource($examination);
+        $this->examination->saveExamination($request, $data);
+
+        cache()->forget('examination:all');
+ 
+         return response()->json([
+             'message' => 'Examination Saved Successfully'
+         ]);
+
     }
 
     /**
@@ -56,9 +73,19 @@ class ExaminationController extends Controller
      * @param  \App\Models\Examination  $examination
      * @return \Illuminate\Http\Response
      */
-    public function show(Examination $examination)
+    public function show($id)
     {
-        return new ExaminationResource($examination);
+        $examination = Examination::find($id);
+
+        if(! $examination) {
+            return response()->json('Examination Not Found');
+        }
+
+        $examinationShow = cache()->rememberForever('examination:'. $examination->id, function () use($examination) {
+            return $examination;
+        });
+
+        return new ExaminationResource($examinationShow);
     }
 
     /**
@@ -79,16 +106,24 @@ class ExaminationController extends Controller
      * @param  \App\Models\Examination  $examination
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateExaminationRequest $request, Examination $examination)
+    public function update(UpdateExaminationRequest $request, $id)
     {
-        $examination->class_type_id = $request->input('class_type_id');
-        $examination->teacher_id = $request->input('teacher_id');
-        $examination->subject_id = $request->input('subject_id');
-        $examination->student_id = $request->input('student_id');
-        $examination->mark = $request->input('mark');
-        $examination->update();
+        $examination = Examination::find($id);
 
-        return new ExaminationResource($examination);
+        if(! $examination) {
+            return response()->json('Examination Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->examination->updateExamination($request, $examination, $data);
+
+        cache()->forget('examination:'. $examination->id);
+        cache()->forget('examination:all');
+ 
+         return response()->json([
+             'message' => 'Examination Updated Successfully'
+         ]);
     }
 
     /**
@@ -97,9 +132,18 @@ class ExaminationController extends Controller
      * @param  \App\Models\Examination  $examination
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Examination $examination)
+    public function destroy($id)
     {
-        $examination = $examination->delete();
+        $examination = Examination::find($id);
+
+        if(! $examination) {
+            return response()->json('Examination Not Found');
+        }
+
+        $this->examination->removeExamination($examination);
+
+        cache()->forget('examination:'. $examination->id);
+        cache()->forget('examination:all');
 
         return response()->json([
             'message' => 'Examination deleted successfully'

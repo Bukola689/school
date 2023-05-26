@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Term;
 use App\Http\Resources\TermResource;
 use App\Http\Requests\StoreTermRequest;
 use App\Http\Requests\UpdateTermRequest;
+use App\Repository\Admin\TermRepository;
 
 class TermController extends Controller
 {
+    public $term;
+
+    public function __construct(TermRepository $term)
+    {
+        $this->term = $term;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +25,13 @@ class TermController extends Controller
      */
     public function index()
     {
-        $terms = Term::orderBy('created_at', 'DESC')->get();
+        $terms = cache()->rememberForever('term:all', function () {
+            return Term::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($terms->isEmpty()) {
+            return response()->json('terms Is Empty');
+        }
 
         return TermResource::Collection($terms);
     }
@@ -39,11 +54,16 @@ class TermController extends Controller
      */
     public function store(StoreTermRequest $request)
     {
-        $term = new Term;
-        $term->section = $request->input('section');
-        $term->save();
+        
+       $data = $request->all();
 
-        return new TermResource($term);
+       $this->term->saveTerm($request, $data);
+
+       cache()->forget('term:all');
+
+        return response()->json([
+            'message' => 'Term Saved Successfully'
+        ]);
     }
 
     /**
@@ -52,9 +72,20 @@ class TermController extends Controller
      * @param  \App\Models\Term  $term
      * @return \Illuminate\Http\Response
      */
-    public function show(Term $term)
+    public function show($id)
     {
-        return new TermResource($term);
+
+        $term = Term::find($id);
+
+        if(! $term) {
+            return response()->json('term Not Found');
+        }
+
+        $termShow = cache()->rememberForever('term:'. $term->id, function () use($term) {
+            return $term;
+        });
+
+        return new TermResource($termShow);
     }
 
     /**
@@ -75,12 +106,25 @@ class TermController extends Controller
      * @param  \App\Models\Term  $term
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateTermRequest $request, Term $term)
+    public function update(UpdateTermRequest $request, $id)
     {
-        $term->section = $request->input('section');
-        $term->update();
+        $term = Term::find($id);
 
-        return new TermResource($term);
+        if(! $term) {
+            return response()->json('term Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->term->updateTerm($request, $term, $data);
+
+        cache()->forget('term:'. $term->id);
+        cache()->forget('term:all');
+ 
+         return response()->json([
+             'message' => 'Term Update Successfully'
+         ]);
+
     }
 
     /**
@@ -89,9 +133,18 @@ class TermController extends Controller
      * @param  \App\Models\Term  $term
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Term $term)
+    public function destroy($id)
     {
-        $term = $term->delete();
+        $term = Term::find($id);
+
+        if(! $term) {
+            return response()->json('term Not Found');
+        }
+
+        $this->term->removeTerm($term);
+
+        cache()->forget('term:'. $term->id);
+        cache()->forget('term:all');
 
         return response()->json([
             'message' => 'Term deleted successfully !'

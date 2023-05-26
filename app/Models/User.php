@@ -6,11 +6,12 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
     /**
      * The attributes that are mass assignable.
@@ -20,7 +21,7 @@ class User extends Authenticatable
 
      protected $guarded = [];
 
-    protected $fillable = ['first_name','last_name','username','occupation_id','gender','d_o_b','phone_number','image','country_id','state_id','local_government_id','address','email', 'password'];
+    protected $fillable = ['name', 'email', 'password'];
 
     /**
      * The attributes that should be hidden for arrays.

@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Repeat;
 use App\Http\Resources\RepeatResource;
 use App\Http\Requests\StoreRepeatRequest;
 use App\Http\Requests\UpdateRepeatRequest;
+use App\Repository\Admin\Repeat\RepeatRepository;
 
 class RepeatController extends Controller
 {
+    public $repeat;
+
+    public function __construct(RepeatRepository $repeat)
+    {
+        $this->repeat = $repeat;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +25,13 @@ class RepeatController extends Controller
      */
     public function index()
     {
-        $repeats = Repeat::orderBy('created_at', 'DESC')->get();
+        $repeats = cache()->rememberForever('repeat:all', function () {
+            return Repeat::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($repeats->isEmpty()) {
+            return response()->json('Repeat Is Empty');
+        }
 
         return RepeatResource::collection($repeats);
     }
@@ -39,14 +54,15 @@ class RepeatController extends Controller
      */
     public function store(StoreRepeatRequest $request)
     {
-        $repeat = new Repeat;
-        $repeat->class_type_id = $request->input('class_type_id');
-        $repeat->teacher_id = $request->input('teacher_id');
-        $repeat->session_id = $request->input('session_id');
-        $repeat->student_id = $request->input('student_id');
-        $repeat->save();
+        $data = $request->all();
 
-        return new RepeatResource($repeat);
+        $this->repeat->saveRepeat($request, $data);
+
+        cache()->forget('repeat:all');
+
+        return response()->json([
+            'message' => 'Repeat Saved Successfully'
+        ]);
     }
 
     /**
@@ -55,9 +71,19 @@ class RepeatController extends Controller
      * @param  \App\Models\Repeat  $repeat
      * @return \Illuminate\Http\Response
      */
-    public function show(Repeat $repeat)
+    public function show($id)
     {
-        return new RepeatResource($repeat);
+        $repeat = Repeat::find($id);
+
+        if(! $repeat) {
+            return response()->json('Repeaters Not Found');
+        }
+
+        $repeatShow = cache()->rememberForever('repeat:'. $repeat->id, function () use($repeat) {
+            return $repeat;
+        });
+
+        return new RepeatResource($repeatShow);
     }
 
     /**
@@ -78,15 +104,24 @@ class RepeatController extends Controller
      * @param  \App\Models\Repeat  $repeat
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateRepeatRequest $request, Repeat $repeat)
+    public function update(UpdateRepeatRequest $request, $id)
     {
-        $repeat->class_type_id = $request->input('class_type_id');
-        $repeat->teacher_id = $request->input('teacher_id');
-        $repeat->session_id = $request->input('session_id');
-        $repeat->student_id = $request->input('student_id');
-        $repeat->update();
+        $repeat = Repeat::find($id);
 
-        return new RepeatResource($repeat);
+        if(! $repeat) {
+            return response()->json('Repeaters Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->repeat->updateRepeat($request, $repeat, $data);
+
+        cache()->forget('repeat:'. $repeat->id);
+        cache()->forget('repeat:all');
+
+        return response()->json([
+            'message' => 'Repeat Updated Successfully'
+        ]);  
     }
 
     /**
@@ -95,9 +130,18 @@ class RepeatController extends Controller
      * @param  \App\Models\Repeat  $repeat
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Repeat $repeat)
+    public function destroy($id)
     {
-        $repeat = $repeat->delete();
+        $repeat = Repeat::find($id);
+
+        if(! $repeat) {
+            return response()->json('Repeaters Not Found');
+        }
+
+        $this->repeat->removeRepeat($repeat);
+        
+        cache()->forget('repeat:'. $repeat->id);
+        cache()->forget('repeat:all');
 
         return response()->json([
             'message' => 'Repeat deleted successfully'

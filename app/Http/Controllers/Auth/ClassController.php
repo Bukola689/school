@@ -30,15 +30,14 @@ class ClassController extends Controller
 
     public function getClassById($id)
     {
-        if(Auth::id())
-        {
+       
             $class = MyClass::orderBy('id', $id)->get();
 
             return response()->json([
                 'status' => true,
                 'class' => $class
             ]);
-        }
+        
     }
 
 }

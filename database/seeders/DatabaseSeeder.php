@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             CountrySeeder::class,
             StateSeeder::class,
             LocalGovernmentSeeder::class,
+            RoleAndPermissionSeeder::class,
             UserSeeder::class,
             TeacherSeeder::class,
             StudentSeeder::class,

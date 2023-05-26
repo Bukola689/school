@@ -6,9 +6,17 @@ use App\Models\Cat3;
 use App\Http\Resources\Cat3Resource;
 use App\Http\Requests\StoreCat3Request;
 use App\Http\Requests\UpdateCat3Request;
+use App\Repository\Admin\Cat3\Cat3Repository;
 
 class Cat3Controller extends Controller
 {
+    public $cat3;
+
+    public function __construct(Cat3Repository  $cat3)
+    {
+        $this->cat3 = $cat3;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +24,13 @@ class Cat3Controller extends Controller
      */
     public function index()
     {
-        $cat3s = Cat3::all();
+        $cat3s = cache()->rememberForever('cat3:all', function () {
+            return  Cat3::orderBy('id', 'desc')->paginate(5);;
+        });
+
+        if($cat3s->isEmpty()) {
+            return response()->json('Cat 3 Is Empty');
+        }
 
         return Cat3Resource::Collection($cat3s);
     }
@@ -39,15 +53,13 @@ class Cat3Controller extends Controller
      */
     public function store(StoreCat3Request $request)
     {
-        $cat3 = new Cat3;
-        $cat3->class_type_id = $request->input('class_type_id');
-        $cat3->student_id = $request->input('student_id');
-        $cat3->subject_id = $request->input('subject_id');
-        $cat3->teacher_id = $request->input('teacher_id');
-        $cat3->score = $request->input('score');
-        $cat3->save();
+        $data = $request->all();
 
-        return new Cat3Resource($cat3);
+        $this->cat3->saveCat3($request, $data);
+ 
+         return response()->json([
+             'message' => 'Cat One Saved Successfully'
+         ]);
     }
 
     /**
@@ -56,9 +68,19 @@ class Cat3Controller extends Controller
      * @param  \App\Models\Cat3  $cat3
      * @return \Illuminate\Http\Response
      */
-    public function show(Cat3 $cat3)
+    public function show($id)
     {
-        return new Cat3Resource($cat3);
+        $cat3 = Cat3::find($id);
+
+        if(! $cat3) {
+            return response()->json('Cat 3 Not Found');
+        }
+
+        $cat3Show = cache()->rememberForever('cat3:'. $cat3->id, function () use($cat3) {
+            return  $cat3;
+        });
+
+        return new Cat3Resource($cat3Show);
     }
 
     /**
@@ -79,16 +101,24 @@ class Cat3Controller extends Controller
      * @param  \App\Models\Cat3  $cat3
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateCat3Request $request, Cat3 $cat3)
+    public function update(UpdateCat3Request $request, $id)
     {
-        $cat3->class_type_id = $request->input('class_type_id');
-        $cat3->student_id = $request->input('student_id');
-        $cat3->subject_id = $request->input('subject_id');
-        $cat3->teacher_id = $request->input('teacher_id');
-        $cat3->score = $request->input('score');
-        $cat3->update();
+        $cat3 = Cat3::find($id);
 
-        return new Cat3Resource($cat3);
+        if(! $cat3) {
+            return response()->json('Cat 3 Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->cat3->updateCat3($request, $cat3, $data);
+
+        cache()->forget('cat3:'. $cat3->id);
+        cache()->forget('cat3:all');
+ 
+         return response()->json([
+             'message' => 'Cat Two Updated Successfully'
+         ]);
     }
 
     /**
@@ -97,9 +127,18 @@ class Cat3Controller extends Controller
      * @param  \App\Models\Cat3  $cat3
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Cat3 $cat3)
+    public function destroy($id)
     {
-        $cat3 = $cat3->delete();
+        $cat3 = Cat3::find($id);
+
+        if(! $cat3) {
+            return response()->json('Cat 3 Not Found');
+        }
+
+        $cat3->delete();
+
+        cache()->forget('cat3:'. $cat3->id);
+        cache()->forget('cat3:all');
 
         return response()->json([
             'message' => 'CAT deleted Successfully'

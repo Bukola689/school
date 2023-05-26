@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\MyClass;
 use App\Http\Resources\MyClassResource;
 use App\Http\Requests\StoreMyClassRequest;
 use App\Http\Requests\UpdateMyClassRequest;
+use App\Repository\Admin\MyClass\MyClassRepository;
 
-class MyClassController extends Controller
+Class MyClassController extends Controller
 {
+    public $myClass;
+
+    public function __construct(MyClassRepository $myClass)
+    {
+        $this->myClass = $myClass;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +25,13 @@ class MyClassController extends Controller
      */
     public function index()
     {
-        $myClasses = MyClass::orderBy('created_at', 'DESC')->get();
+        $myClasses =  cache()->rememberForever('myClass:all', function () {
+            return  MyClass::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($myClasses->isEmpty()) {
+            return response()->json('Class Is Empty');
+        }
 
         return MyClassResource::collection($myClasses);
     }
@@ -39,11 +54,15 @@ class MyClassController extends Controller
      */
     public function store(StoreMyClassRequest $request)
     {
-        $myClass = new MyClass;
-        $myClass->name = $request->input('name');
-        $myClass->save();
+       $data = $request->all();
 
-        return new MyClassResource($myClass);
+       $this->myClass->saveClass($request, $data);
+
+       cache()->forget('myClass:all');
+
+        return response()->json([
+            'message' => 'Class Created Successfully'
+        ]);
     }
 
     /**
@@ -52,9 +71,19 @@ class MyClassController extends Controller
      * @param  \App\Models\MyClass  $myClass
      * @return \Illuminate\Http\Response
      */
-    public function show(MyClass $myClass)
+    public function show($id)
     {
-        return new MyClassResource($myClass);
+        $myClass = MyClass::find($id);
+
+        if(! $myClass) {
+            return response()->json('MyClass Not Found');
+        }
+
+        $myClassShow = cache()->rememberForever('myClass:'. $myClass->id, function () use($myClass) {
+            return $myClass;
+        });
+
+        return new MyClassResource($myClassShow);
     }
 
     /**
@@ -75,12 +104,25 @@ class MyClassController extends Controller
      * @param  \App\Models\MyClass  $myClass
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateMyClassRequest $request, MyClass $myClass)
+    public function update(UpdateMyClassRequest $request,  $id)
     {
-        $myClass->name = $request->input('name');
-        $myClass->update();
+        $myClass = MyClass::find($id);
 
-        return new MyClassResource($myClass);
+        if(! $myClass) {
+            return response()->json('MyClass Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->myClass->updateClass($request, $myClass, $data);
+
+        cache()->forget('myClass:'. $myClass->id);
+        cache()->forget('myClass:all');
+
+        return response()->json([
+            'message' => 'Class Updated Successfully'
+        ]);
+
     }
 
     /**
@@ -89,9 +131,18 @@ class MyClassController extends Controller
      * @param  \App\Models\MyClass  $myClass
      * @return \Illuminate\Http\Response
      */
-    public function destroy(MyClass $myClass)
+    public function destroy($id)
     {
-        $myClass = $myClass->delete();
+        $myClass = MyClass::find($id);
+
+        if(! $myClass) {
+            return response()->json('MyClass Not Found');
+        }
+
+       $this->myClass->removeClass($myClass);
+
+       cache()->forget('myClass:'. $myClass->id);
+       cache()->forget('myClass:all');
 
         return response()->json([
             'message' => 'MyClass Deleted Successfully !'

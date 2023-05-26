@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 
@@ -9,67 +9,96 @@ use App\Http\Resources\UserResource;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
+use App\Repository\Admin\UserRepository;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class UserController extends Controller
 {
+    public $user;
+
+    public function __construct(UserRepository $user)
+    {
+        $this->user = $user;
+    }
+
+
     public function index()
     {
-        $users = User::all();
+        $users =  Cache::remember('users', 60, function () {
+            return User::orderBy('created_at', 'DESC')->paginate(5);
+        }); 
 
+        if($users->isEmpty()) {
+            return response()->json('users Is Empty');
+        }
+        
         return UserResource::collection($users);
     }
 
     public function store(StoreUserRequest $request)
     {
-        // $image = $request->image;
-      
-        // $originalName = $image->getClientOriginalName();
-    
-        // $image_new_name = 'image-' .time() .  '-' .$originalName;
-    
-        // $image->move('users/image', $image_new_name);
+       $data = $request->all();
 
-        $user = new User;
-        $user->name = $request->input('name');
-        // $user->occupation_id = $request->input('occupation_id');
-        // $user->gender = $request->input('gender');
-        // $user->d_o_b = $request->input('d_o_b');
-        // $user->phone_number = $request->input('phone_number');
-       // $user->image = 'users/image/' . $image_new_name;
-        // $user->country_id = $request->input('country_id');
-        // $user->state_id = $request->input('state_id');
-        // $user->local_government_id = $request->input('local_government_id');
-        // $user->address = $request->input('address');
-        $user->email = $request->input('email');
-        $user->password = Hash::make($request->password);
-        $user->save();
+       $this->user->saveUser($request, $data);
 
-        return new UserResource($user);
+       cache()->forget('user:all');
+
+        return response()->json([
+            'message' => 'User Saved Successfully'
+        ]);
 
     }
 
-    public function show(User $user)
+    public function show($id)
     {
-        return new UserResource($user);
+        $user = User::find($id);
+
+        if(! $user) {
+            return response()->json('user Not Found');
+        }
+
+        $userShow = cache()->rememberForever('user:'. $user->id, function () use($user) {
+            return $user;
+        });
+
+        return new UserResource($userShow);
     }
 
-    public function update(UpdateUserRequest $request, User $user)
-    {
-   
+    public function update(UpdateUserRequest $request, $id)
+    { 
+        $user = User::find($id);
 
-        $user->name = $request->input('name');
-        $user->update();
+        if(! $user) {
+            return response()->json('user Not Found');
+        }
 
+       $data = $request->all();
 
-        return new UserResource($user);
+       $this->user->updateUser($request, $user, $data);
+
+       cache()->forget('user:'. $user->id);
+       cache()->forget('user:all');
+
+        return response()->json([
+            'status' => 'User Updated Successfully'
+        ]);
 
     }
 
-    public function destroy(User $user)
+    public function destroy($id)
     {
-        $user = $user->delete();
+        $user = User::find($id);
 
+        if(! $user) {
+            return response()->json('user Not Found');
+        }
+
+        $this->user->removeUser($user);
+
+        cache()->forget('user:'. $user->id);
+        cache()->forget('user:all');
+        
         return response()->json([
             'status' => 'User Deleted Successfully ',
         ]);      

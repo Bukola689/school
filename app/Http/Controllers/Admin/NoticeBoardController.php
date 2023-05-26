@@ -1,14 +1,24 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\NoticeBoard;
 use App\Http\Resources\NoticeBoardResource;
 use App\Http\Requests\StoreNoticeBoardRequest;
 use App\Http\Requests\UpdateNoticeBoardRequest;
+use App\Repository\Admin\NoticeBoard\NoticeBoardRepository;
 
 class NoticeBoardController extends Controller
 {
+    public $noticeBoard;
+
+    public function __construct(NoticeBoardRepository $noticeBoard)
+    {
+        $this->noticeBoard = $noticeBoard;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,9 +26,15 @@ class NoticeBoardController extends Controller
      */
     public function index()
     {
-        $noticeBoard = NoticeBoard::orderBy('created_at', 'DESC')->get();
+        $noticeBoards =  cache()->rememberForever('noticeBoard:all', function () {
+            return   NoticeBoard::orderBy('created_at', 'DESC')->get();
+        });
 
-        return NoticeBoardResource::collection($noticeBoard);
+        if($noticeBoards->isEmpty()) {
+            return response()->json('Notice Board Is Empty');
+        }
+
+        return NoticeBoardResource::collection($noticeBoards);
     }
 
     /**
@@ -39,12 +55,15 @@ class NoticeBoardController extends Controller
      */
     public function store(StoreNoticeBoardRequest $request)
     {
-        $noticeBoard = new NoticeBoard;
-        $noticeBoard->title = $request->input('title');
-        $noticeBoard->description = $request->input('description');
-        $noticeBoard->save();
+        $data = $request->all();
 
-        return new NoticeBoardResource($noticeBoard);
+        $this->noticeBoard->savenoticeBoard($request, $data);
+
+        cache()->forget('noticeBoard:all');
+
+        return response()->json([
+            'message' => 'noticeBoard Saved Successfully'
+        ]);
     }
 
     /**
@@ -53,9 +72,19 @@ class NoticeBoardController extends Controller
      * @param  \App\Models\NoticeBoard  $noticeBoard
      * @return \Illuminate\Http\Response
      */
-    public function show(NoticeBoard $noticeBoard)
+    public function show($id)
     {
-        return new NoticeBoardResource($noticeBoard);
+        $noticeBoard = NoticeBoard::find($id);
+
+        if(! $noticeBoard) {
+            return response()->json('Notice Board Not Found');
+        }
+
+        $noticeBoardShow = cache()->rememberForever('noticeBoard:'. $noticeBoard->id, function () use($noticeBoard) {
+            return $noticeBoard;
+        });
+
+        return new NoticeBoardResource($noticeBoardShow);
     }
 
     /**
@@ -76,13 +105,24 @@ class NoticeBoardController extends Controller
      * @param  \App\Models\NoticeBoard  $noticeBoard
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateNoticeBoardRequest $request, NoticeBoard $noticeBoard)
+    public function update(UpdateNoticeBoardRequest $request, $id)
     {
-        $noticeBoard->title = $request->input('title');
-        $noticeBoard->description = $request->input('description');
-        $noticeBoard->update();
+        $noticeBoard = NoticeBoard::find($id);
 
-        return new NoticeBoardResource($noticeBoard);
+        if(! $noticeBoard) {
+            return response()->json('Notice Board Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->noticeBoard->updatenoticeBoard($request, $noticeBoard, $data);
+
+        cache()->forget('noticeBoard:'. $noticeBoard->id);
+        cache()->forget('noticeBoard:all');
+
+        return response()->json([
+            'message' => 'noticeBoard Updated Successfully'
+        ]);  
     }
 
     /**
@@ -91,9 +131,18 @@ class NoticeBoardController extends Controller
      * @param  \App\Models\NoticeBoard  $noticeBoard
      * @return \Illuminate\Http\Response
      */
-    public function destroy(NoticeBoard $noticeBoard)
+    public function destroy($id)
     {
-        $noticeBoard = $noticeBoard->delete();
+        $noticeBoard = NoticeBoard::find($id);
+
+        if(! $noticeBoard) {
+            return response()->json('Notice Board Not Found');
+        }
+
+       $this->noticeBoard->removeNoticeBoard($noticeBoard);
+
+       cache()->forget('noticeBoard:'. $noticeBoard->id);
+       cache()->forget('noticeBoard:all');
 
         return response()->json([
             'message' => 'Notice Board deleted Successfully'

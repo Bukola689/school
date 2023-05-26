@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\LocalGovernment;
 use App\Http\Resources\LocalGovernmentResource;
 use App\Http\Requests\StoreLocalGovernmentRequest;
 use App\Http\Requests\UpdateLocalGovernmentRequest;
+use App\Repository\Admin\LgaRepository;
 
 class LocalGovernmentController extends Controller
 {
+    public $lga;
+
+    public function __construct(LgaRepository $lga)
+    {
+        $this->lga = $lga;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,8 +25,15 @@ class LocalGovernmentController extends Controller
      */
     public function index()
     {
-        $localGovernments = LocalGovernment::orderBy('created_at', 'DESC')->get();
+        $localGovernments =  cache()->rememberForever('localGovernment:all', function () {
+            return  LocalGovernment::orderBy('created_at', 'DESC')->get();
+        });
+        
+        if($localGovernments->isEmpty()) {
+            return response()->json('Local Government Area Is Empty');
+        }
 
+        
         return LocalGovernmentResource::collection($localGovernments);
     }
 
@@ -39,11 +55,15 @@ class LocalGovernmentController extends Controller
      */
     public function store(StoreLocalGovernmentRequest $request)
     {
-        $localGovernment = new LocalGovernment;
-        $localGovernment->name = $request->input('name');
-        $localGovernment->save();
+       $data = $request->all();
 
-        return new LocalGovernmentResource($localGovernment);
+       $this->lga->saveLocalGovernment($request, $data);
+
+       cache()->forget('localGovernment:all');
+
+        return response()->json([
+            'message' => 'L G A Saved Suucessfully'
+        ]);
     }
 
     /**
@@ -52,9 +72,19 @@ class LocalGovernmentController extends Controller
      * @param  \App\Models\LocalGovernment  $localGovernment
      * @return \Illuminate\Http\Response
      */
-    public function show(LocalGovernment $localGovernment)
+    public function show($id)
     {
-        return new LocalGovernmentResource($localGovernment);
+        $localGovernment = LocalGovernment::find($id);
+
+        if(! $localGovernment) {
+            return response()->json('Hostel Not Found');
+        }
+
+        $lgaShow = cache()->rememberForever('localGovernment:'. $localGovernment->id, function () use($localGovernment) {
+            return $localGovernment;
+        });
+
+        return new LocalGovernmentResource($lgaShow);
     }
 
     /**
@@ -75,12 +105,24 @@ class LocalGovernmentController extends Controller
      * @param  \App\Models\LocalGovernment  $localGovernment
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateLocalGovernmentRequest $request, LocalGovernment $localGovernment)
+    public function update(UpdateLocalGovernmentRequest $request, $id)
     {
-        $localGovernment->name = $request->input('name');
-        $localGovernment->update();
+        $localGovernment = LocalGovernment::find($id);
 
-        return new LocalGovernmentResource($localGovernment);
+        if(! $localGovernment) {
+            return response()->json('Hostel Not Found');
+        }
+      
+        $data = $request->all();
+
+        $this->lga->updateLocalGovernment($request, $localGovernment, $data);
+
+        cache()->forget('localGovernment:'. $localGovernment->id);
+        cache()->forget('localGovernment:all');
+ 
+         return response()->json([
+             'message' => 'L G A Update Suucessfully'
+         ]);
     }
 
     /**
@@ -89,9 +131,18 @@ class LocalGovernmentController extends Controller
      * @param  \App\Models\LocalGovernment  $localGovernment
      * @return \Illuminate\Http\Response
      */
-    public function destroy(LocalGovernment $localGovernment)
+    public function destroy($id)
     {
-        $localGovernment = $localGovernment->delete();
+        $localGovernment = LocalGovernment::find($id);
+
+        if(! $localGovernment) {
+            return response()->json('Hostel Not Found');
+        }
+
+        $this->lga->removeLocalGovernment($localGovernment);
+
+        cache()->forget('localGovernment:'. $localGovernment->id);
+        cache()->forget('localGovernment:all');
 
         return response()->json([
             'message' => 'Local Government Deleted Successfully !'

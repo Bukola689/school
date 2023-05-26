@@ -1,14 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Cat2;
 use App\Http\Resources\Cat2Resource;
 use App\Http\Requests\StoreCat2Request;
 use App\Http\Requests\UpdateCat2Request;
+use App\Repository\Admin\Cat2\Cat2Repository;
 
 class Cat2Controller extends Controller
 {
+
+    public $cat2;
+
+    public function __construct(Cat2Repository  $cat2)
+    {
+        $this->cat2 = $cat2;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +27,13 @@ class Cat2Controller extends Controller
      */
     public function index()
     {
-        $cat2s = Cat2::all();
+        $cat2s = cache()->rememberForever('attendance:all', function () {
+            return  Cat2::orderBy('id', 'desc')->paginate(5);;
+        });
+
+        if($cat2s->isEmpty()) {
+            return response()->json('Cat 2 Is Empty');
+        }
 
         return Cat2Resource::Collection($cat2s);
     }
@@ -39,15 +56,15 @@ class Cat2Controller extends Controller
      */
     public function store(StoreCat2Request $request)
     {
-        $cat2 = new Cat2;
-        $cat2->class_type_id = $request->input('class_type_id');
-        $cat2->student_id = $request->input('student_id');
-        $cat2->subject_id = $request->input('subject_id');
-        $cat2->teacher_id = $request->input('teacher_id');
-        $cat2->score = $request->input('score');
-        $cat2->save();
+        $data = $request->all();
 
-        return new Cat2Resource($cat2);
+       $this->cat2->saveCat2($request, $data);
+
+       cache()->forget('cat2:all');
+
+        return response()->json([
+            'message' => 'Cat Two Saved Successfully'
+        ]);
     }
 
     /**
@@ -56,9 +73,20 @@ class Cat2Controller extends Controller
      * @param  \App\Models\Cat2  $cat2
      * @return \Illuminate\Http\Response
      */
-    public function show(Cat2 $cat2)
+    public function show($id)
     {
-        return new Cat2Resource($cat2);
+        $cat2 = Cat2::find($id);
+
+        if(! $cat2) {
+            return response()->json('Cat 2 Not Found');
+        }
+
+
+        $cat2Show = cache()->rememberForever('cat2:'. $cat2->id, function () use ($cat2) {
+            return $cat2;
+        });
+        
+        return new Cat2Resource($cat2Show);
     }
 
     /**
@@ -79,16 +107,24 @@ class Cat2Controller extends Controller
      * @param  \App\Models\Cat2  $cat2
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateCat2Request $request, Cat2 $cat2)
+    public function update(UpdateCat2Request $request,  $id)
     {
-        $cat2->class_type_id = $request->input('class_type_id');
-        $cat2->student_id = $request->input('student_id');
-        $cat2->subject_id = $request->input('subject_id');
-        $cat2->teacher_id = $request->input('teacher_id');
-        $cat2->score = $request->input('score');
-        $cat2->update();
+        $cat2 = Cat2::find($id);
 
-        return new Cat2Resource($cat2);
+        if(! $cat2) {
+            return response()->json('Cat 2 Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->cat2->updateCat2($request, $cat2, $data);
+
+        cache()->forget('cat2:'. $cat2->id);
+        cache()->forget('cat2:all');
+ 
+         return response()->json([
+             'message' => 'Cat Two Updated Successfully'
+         ]);
     }
 
     /**
@@ -97,9 +133,18 @@ class Cat2Controller extends Controller
      * @param  \App\Models\Cat2  $cat2
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Cat2 $cat2)
+    public function destroy( $id)
     {
-        $cat2 = $cat2->delete();
+        $cat2 = Cat2::find($id);
+
+        if(! $cat2) {
+            return response()->json('Cat 2 Not Found');
+        }
+
+        $cat2->delete();
+
+        cache()->forget('cat2:'. $cat2->id);
+        cache()->forget('cat2:all');
 
         return response()->json([
             'message' => 'CAT deleted Successfully'

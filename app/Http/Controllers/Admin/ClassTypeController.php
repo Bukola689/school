@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\ClassType;
 use App\Http\Resources\ClassTypeResource;
 use App\Http\Requests\StoreClassTypeRequest;
 use App\Http\Requests\UpdateClassTypeRequest;
+use App\Repository\Admin\ClassTypeRepository;
 
 class ClassTypeController extends Controller
 {
+    public $classType;
+
+    public function __construct(ClassTypeRepository $classType)
+    {
+        $this->classType = $classType;
+    }
+  
     /**
      * Display a listing of the resource.
      *
@@ -16,9 +25,15 @@ class ClassTypeController extends Controller
      */
     public function index()
     {
-        $classtype = ClassType::orderBy('created_at', 'DESC')->get();
+        $classtypes =  cache()->rememberForever('classtype:all', function () {
+            ClassType::orderBy('created_at', 'DESC')->get();
+        });
 
-        return ClassTypeResource::Collection($classtype);
+        if($classtypes->isEmpty()) {
+            return response()->json('Class Type Is Empty');
+        }
+
+        return ClassTypeResource::Collection($classtypes);
     }
 
     /**
@@ -39,12 +54,15 @@ class ClassTypeController extends Controller
      */
     public function store(StoreClassTypeRequest $request)
     {
-        $classType = new ClassType;
-        $classType->my_class_id = $request->input('my_class_id');
-        $classType->name = $request->input('name');
-        $classType->save();
+       $data = $request->all();
 
-        return new ClassTypeResource($classType);
+       $this->classType->saveClassType($request, $data);
+
+       cache()->forget('classtype:all');
+
+        return response()->json([
+            'message' => 'ClassType Saved Successfully'
+        ]);
     }
 
     /**
@@ -53,9 +71,19 @@ class ClassTypeController extends Controller
      * @param  \App\Models\ClassType  $classType
      * @return \Illuminate\Http\Response
      */
-    public function show(ClassType $classType)
+    public function show( $id)
     {
-        return new ClassTypeResource($classType);
+        $classType = ClassType::find($id);
+
+        if(! $classType) {
+            return response()->json('Cat 3 Not Found');
+        }
+
+        $classTypeShow = cache()->rememberForever('classType:'. $classType->id, function () use($classType) {
+            return $classType;
+        });
+
+        return new ClassTypeResource($classTypeShow);
     }
 
     /**
@@ -76,13 +104,25 @@ class ClassTypeController extends Controller
      * @param  \App\Models\ClassType  $classType
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateClassTypeRequest $request, ClassType $classType)
+    public function update(UpdateClassTypeRequest $request, $id)
     {
-        $classType->my_class_id = $request->input('my_class_id');
-        $classType->name = $request->input('name');
-        $classType->update();
+        $classType = ClassType::find($id);
 
-        return new ClassTypeResource($classType);
+        if(! $classType) {
+            return response()->json('Cat 3 Not Found');
+        }
+      
+        $data = $request->all();
+
+        $this->classType->updateClassType($request, $classType, $data);
+
+        cache()->forget('classType:'. $classType->id);
+        cache()->forget('classType:all');
+ 
+         return response()->json([
+             'message' => 'ClassType Updated Successfully'
+         ]);
+
     }
 
     /**
@@ -91,9 +131,18 @@ class ClassTypeController extends Controller
      * @param  \App\Models\ClassType  $classType
      * @return \Illuminate\Http\Response
      */
-    public function destroy(ClassType $classType)
+    public function destroy($id)
     {
-        $classType = $classType->delete();
+        $classType = ClassType::find($id);
+
+        if(! $classType) {
+            return response()->json('Cat 3 Not Found');
+        }
+
+       $this->classType->removeClassType($classType);
+
+       cache()->forget('classType:'. $classType->id);
+       cache()->forget('classType:all');
 
         return response()->json([
             'message' => 'ClassType Deleted Successfully !'

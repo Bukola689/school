@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Occupation;
 use App\Http\Resources\OccupationResource;
 use App\Http\Requests\StoreOccupationRequest;
 use App\Http\Requests\UpdateOccupationRequest;
+use App\Repository\Admin\OccupationRepository;
 
 class OccupationController extends Controller
 {
+    public $occupation;
+
+    public function __construct(OccupationRepository $occupation)
+    {
+         $this->occupation = $occupation;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +25,13 @@ class OccupationController extends Controller
      */
     public function index()
     {
-        $occupations = Occupation::orderBy('created_at', 'DESC')->get();
+        $occupations = cache()->rememberForever('occupations', 60,function () {
+            return Occupation::orderBy('created_at', 'DESC')->paginate(5);
+        });
+        
+        if($occupations->isEmpty()) {
+            return response()->json('Occuaption Is Empty');
+        }
 
         return OccupationResource::collection($occupations);
     }
@@ -39,12 +54,15 @@ class OccupationController extends Controller
      */
     public function store(StoreOccupationRequest $request)
     {
-        //dd($request->all());
-        $occupation = new Occupation;
-        $occupation->name = $request->input('name');
-        $occupation->save();
+       $data = $request->all();
 
-        return new OccupationResource($occupation);
+       $this->occupation->saveOccupation($request, $data);
+
+       cache()->forget('occupation:all');
+
+        return response()->json([
+            'message' => 'Occupation Saved Successfully'
+        ]);
     }
 
     /**
@@ -53,9 +71,19 @@ class OccupationController extends Controller
      * @param  \App\Models\Occupation  $occupation
      * @return \Illuminate\Http\Response
      */
-    public function show(Occupation $occupation)
+    public function show($id)
     {
-        return new OccupationResource($occupation);
+        $occupation = Occupation::find($id);
+
+        if(! $occupation) {
+            return response()->json('Occupation Not Found');
+        }
+
+        $occupationShow = cache()->rememberForever('occupation:'. $occupation->id, function () use($occupation) {
+            return $occupation;
+        });
+
+        return new OccupationResource($occupationShow);
     }
 
     /**
@@ -76,12 +104,24 @@ class OccupationController extends Controller
      * @param  \App\Models\Occupation  $occupation
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateOccupationRequest $request, Occupation $occupation)
+    public function update(UpdateOccupationRequest $request,  $id)
     {
-        $occupation->name = $request->input('name');
-        $occupation->update();
+        $occupation = Occupation::find($id);
 
-        return new OccupationResource($occupation);
+        if(! $occupation) {
+            return response()->json('Occupation Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->occupation->updateOccupation($request, $occupation, $data);
+
+        cache()->forget('occupation:'. $occupation->id);
+        cache()->forget('occupation:all');
+ 
+         return response()->json([
+             'message' => 'Occupation Updated Successfully'
+         ]);
     }
 
     /**
@@ -90,9 +130,18 @@ class OccupationController extends Controller
      * @param  \App\Models\Occupation  $occupation
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Occupation $occupation)
+    public function destroy($id)
     {
-        $occupation = $occupation->delete();
+        $occupation = Occupation::find($id);
+
+        if(! $occupation) {
+            return response()->json('Occupation Not Found');
+        }
+
+        $this->occupation->removeOccupation($occupation);
+
+        cache()->forget('occupation:'. $occupation->id);
+        cache()->forget('occupation:all');
 
         return response()->json([
             'message' => 'occupation deleted successfully',

@@ -16,7 +16,7 @@ class CreateHostelsTable extends Migration
         Schema::create('hostels', function (Blueprint $table) {
             $table->id();
             $table->foreignId('student_id')->constrained();
-            $table->integer('block');
+            $table->string('block');
             $table->integer('room_no');
             $table->timestamps();
         });

@@ -20,7 +20,6 @@ class TeacherResource extends JsonResource
             'id' => (string)$this->id,
             'data' => 'Teachers',
             'attributes' => [
-                'user_id' => 'required',
                 'first_name' => $this->first_name,
                 'last_name' => $this->last_name,
                 'age' => $this->age,

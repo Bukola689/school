@@ -1,14 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Teacher;
 use App\Http\Resources\TeacherResource;
 use App\Http\Requests\StoreTeacherRequest;
 use App\Http\Requests\UpdateTeacherRequest;
+use App\Repository\Admin\TeacherRepository;
+use Illuminate\Support\Facades\Auth;
 
 class TeacherController extends Controller
 {
+
+    public $teacher;
+
+    public function __construct(TeacherRepository $teacher)
+    {
+        $this->teacher = $teacher;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +27,13 @@ class TeacherController extends Controller
      */
     public function index()
     {
-        $teachers = Teacher::orderBy('created_at', 'DESC')->get();
+        $teachers = cache()->rememberForever('teacher:all', function () {
+            return Teacher::orderBy('created_at', 'DESC')->get();
+        });
+        
+        if($teachers->isEmpty()) {
+            return response()->json('teachers Is Empty');
+        }
 
         return TeacherResource::collection($teachers);
     }
@@ -39,32 +56,15 @@ class TeacherController extends Controller
      */
     public function store(StoreTeacherRequest $request)
     {
-         $image = $request->image;
-      
-        $originalName = $image->getClientOriginalName();
-    
-        $image_new_name = 'image-' .time() .  '-' .$originalName;
-    
-        $image->move('teachers/image', $image_new_name);
+        $data = $request->all();
 
-        $teacher = new Teacher;
-        $teacher->user_id = $request->input('user_id');
-        $teacher->first_name = $request->input('first_name');
-        $teacher->last_name = $request->input('last_name');
-        $teacher->age = $request->input('age');
-        $teacher->occupation_id = $request->input('occupation_id');
-        $teacher->gender = $request->input('gender');
-        $teacher->d_o_b = $request->input('d_o_b');
-        $teacher->phone_number = $request->input('phone_number');
-        $teacher->image = 'teachers/image/' . $image_new_name;
-        $teacher->country_id = $request->input('country_id');
-        $teacher->state_id = $request->input('state_id');
-        $teacher->local_government_id = $request->input('local_government_id');
-        $teacher->address = $request->input('address');
-        $teacher->qualification = $request->input('qualification');
-        $teacher->save();
+        $this->teacher->saveTeacher($request, $data);
 
-        return new TeacherResource($teacher);
+        cache()->forget('teacher:all');
+
+       return response()->json([
+           'message' => 'Teacher Saved Successfully'
+       ]);
     }
 
     /**
@@ -73,9 +73,19 @@ class TeacherController extends Controller
      * @param  \App\Models\Teacher  $teacher
      * @return \Illuminate\Http\Response
      */
-    public function show(Teacher $teacher)
+    public function show($id)
     {
-        return new TeacherResource($teacher);
+        $teacher = Teacher::find($id);
+
+        if(! $teacher) {
+            return response()->json('teacher Not Found');
+        }
+
+        $teacherShow = cache()->rememberForever('teacher:'. $teacher->id, function () use($teacher) {
+            return $teacher;
+        });
+
+        return new TeacherResource($teacherShow);
     }
 
     /**
@@ -96,38 +106,25 @@ class TeacherController extends Controller
      * @param  \App\Models\Teacher  $teacher
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateTeacherRequest $request, Teacher $teacher)
+    public function update(UpdateTeacherRequest $request, $id)
     {
+        $teacher = Teacher::find($id);
 
-             if( $request->hasFile('image')) {
-  
-            $image = $request->image;
-  
-            $originalName = $image->getClientOriginalName();
-    
-            $image_new_name = 'image-' .time() .  '-' .$originalName;
-    
-            $image->move('teachers/image', $image_new_name);
-  
-            $teacher->image = 'teachers/image/' . $image_new_name;
-      }
+        if(! $teacher) {
+            return response()->json('teacher Not Found');
+        }
 
-      //$teacher->user_id = $request->input('user_id');
-      $teacher->first_name = $request->input('first_name');
-      $teacher->last_name = $request->input('last_name');
-      $teacher->age = $request->input('age');
-      $teacher->occupation_id = $request->input('occupation_id');
-      $teacher->gender = $request->input('gender');
-      $teacher->d_o_b = $request->input('d_o_b');
-      $teacher->phone_number = $request->input('phone_number');
-      $teacher->country_id = $request->input('country_id');
-      $teacher->state_id = $request->input('state_id');
-      $teacher->local_government_id = $request->input('local_government_id');
-      $teacher->address = $request->input('address');
-      $teacher->qualification = $request->input('qualification');
-      $teacher->update();
+         $data = $request->all();
 
-        return new TeacherResource($teacher);
+         $this->teacher->updateTeacher($request, $teacher, $data);
+
+         cache()->forget('teacher:'. $teacher->id);
+         cache()->forget('teacher:all');
+ 
+
+        return response()->json([
+            'message' => 'Teacher Updated Successfully'
+        ]);
     }
 
     /**
@@ -136,9 +133,19 @@ class TeacherController extends Controller
      * @param  \App\Models\Teacher  $teacher
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Teacher $teacher)
+    public function destroy($id)
     {
-        $teacher = $teacher->delete();
+        $teacher = Teacher::find($id);
+
+        if(! $teacher) {
+            return response()->json('teacher Not Found');
+        }
+
+        $this->teacher->removeTeacher($teacher);
+
+        cache()->forget('teacher:'. $teacher->id);
+        cache()->forget('teacher:all');
+
 
         return new TeacherResource($teacher);
     }

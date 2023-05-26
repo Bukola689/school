@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Promotion;
 use App\Http\Resources\PromotionResource;
 use App\Http\Requests\StorePromotionRequest;
 use App\Http\Requests\UpdatePromotionRequest;
+use App\Repository\Admin\Promotion\PromotionRepository;
 
 class PromotionController extends Controller
 {
+    public $promotion;
+
+    public function __construct(PromotionRepository $promotion)
+    {
+        $this->promotion = $promotion;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,8 +25,14 @@ class PromotionController extends Controller
      */
     public function index()
     {
-        $promotions = Promotion::orderBy('created_at', 'DESC')->get();
+        $promotions =  cache()->rememberForever('promotion:all', 60, function () {
+            return Promotion::orderBy('created_at', 'DESC')->get();
+        });
 
+        if($promotions->isEmpty()) {
+            return response()->json('Promotion Is Empty');
+        }
+        
         return PromotionResource::collection($promotions);
     }
 
@@ -39,14 +54,15 @@ class PromotionController extends Controller
      */
     public function store(StorePromotionRequest $request)
     {
-        $promotion = new Promotion;
-        $promotion->class_type_id = $request->input('class_type_id');
-        $promotion->teacher_id = $request->input('teacher_id');
-        $promotion->session_id = $request->input('session_id');
-        $promotion->student_id = $request->input('student_id');
-        $promotion->save();
+        $data = $request->all();
 
-        return new PromotionResource($promotion);
+        $this->promotion->savePromotion($request, $data);
+
+        cache()->forget('promotion:all');
+
+        return response()->json([
+            'message' => 'Promotion Saved Successfully'
+        ]);
     }
 
     /**
@@ -55,9 +71,19 @@ class PromotionController extends Controller
      * @param  \App\Models\Promotion  $promotion
      * @return \Illuminate\Http\Response
      */
-    public function show(Promotion $promotion)
+    public function show($id)
     {
-        return new PromotionResource($promotion);
+        $promotion = Promotion::find($id);
+
+        if(! $promotion) {
+            return response()->json('Promotion Not Found');
+        }
+
+        $promotionShow = cache()->rememberForever('promotion:'. $promotion->id, function () use($promotion) {
+            return $promotion;
+        });
+
+        return new PromotionResource($promotionShow);
     }
 
     /**
@@ -78,15 +104,24 @@ class PromotionController extends Controller
      * @param  \App\Models\Promotion  $promotion
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdatePromotionRequest $request, Promotion $promotion)
+    public function update(UpdatePromotionRequest $request, $id)
     {
-        $promotion->class_type_id = $request->input('class_type_id');
-        $promotion->teacher_id = $request->input('teacher_id');
-        $promotion->session_id = $request->input('session_id');
-        $promotion->student_id = $request->input('student_id');
-        $promotion->update();
+        $promotion = Promotion::find($id);
 
-        return new PromotionResource($promotion);
+        if(! $promotion) {
+            return response()->json('Promotion Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->promotion->updatePromotion($request, $promotion, $data);
+
+        cache()->forget('promotion:'. $promotion->id);
+        cache()->forget('promotion:all');
+
+        return response()->json([
+            'message' => 'Promotion Updated Successfully'
+        ]);  
     }
 
     /**
@@ -95,9 +130,18 @@ class PromotionController extends Controller
      * @param  \App\Models\Promotion  $promotion
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Promotion $promotion)
+    public function destroy($id)
     {
-        $promotion = $promotion->delete();
+        $promotion = Promotion::find($id);
+
+        if(! $promotion) {
+            return response()->json('Promotion Not Found');
+        }
+
+        $this->promotion->removePromotion($promotion);
+
+        cache()->forget('promotion:'. $promotion->id);
+        cache()->forget('promotion:all');
 
         return response()->json([
             'message' => 'Promotion deleted successfully'

@@ -35,7 +35,6 @@ class UpdateStudentRequest extends FormRequest
             'state_id' => 'required',
             'local_government_id' => 'required',
             'image' => 'required',
-            'qualification' => 'required',
             'address' => 'required',
             'parent_firstName' => 'required',
             'parent_lastName' => 'required',

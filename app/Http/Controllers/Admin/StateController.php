@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\State;
 use App\Http\Resources\StateResource;
 use App\Http\Requests\StoreStateRequest;
 use App\Http\Requests\UpdateStateRequest;
+use App\Repository\Admin\StateRepository;
 
 class StateController extends Controller
 {
+    public $state;
+
+    public function __construct(StateRepository $state)
+    {
+        $this->state = $state;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,9 +25,16 @@ class StateController extends Controller
      */
     public function index()
     {
-        $states = State::orderBy('created_at', 'DESC')->get();
+        $states = cache()->rememberForever('state:all', function () {
+            return State::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($states->isEmpty()) {
+            return response()->json('State Is Empty');
+        }
 
         return StateResource::collection($states);
+        
     }
 
     /**
@@ -39,11 +55,15 @@ class StateController extends Controller
      */
     public function store(StoreStateRequest $request)
     {
-        $state = new State;
-        $state->name = $request->input('name');
-        $state->save();
+      $data = $request->all();
 
-        return new StateResource($state);
+      $this->state->saveState($request, $data);
+
+      cache()->forget('state:all');
+
+        return response()->json([
+            'message' => 'State Saved Successfully'
+        ]);
     }
 
     /**
@@ -52,9 +72,19 @@ class StateController extends Controller
      * @param  \App\Models\State  $state
      * @return \Illuminate\Http\Response
      */
-    public function show(State $state)
+    public function show($id)
     {
-        return new StateResource($state);
+        $state = State::find($id);
+
+        if(! $state) {
+            return response()->json('State Not Found');
+        }
+
+        $stateShow = cache()->rememberForever('state:'. $state->id, function () use($state) {
+            return $state;
+        });
+
+        return new StateResource($stateShow);
     }
 
     /**
@@ -75,12 +105,23 @@ class StateController extends Controller
      * @param  \App\Models\State  $state
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateStateRequest $request, State $state)
+    public function update(UpdateStateRequest $request, $id)
     {
-        $state->name = $request->input('name');
-        $state->update();
+        $state = State::find($id);
 
-        return new StateResource($state);
+        if(! $state) {
+            return response()->json('State Not Found');
+        }
+        $data = $request->all();
+
+        $this->state->updateState($request, $state, $data);
+
+        cache()->forget('state:'. $state->id);
+        cache()->forget('state:all');
+  
+          return response()->json([
+              'message' => 'State Updated Successfully'
+          ]);
     }
 
     /**
@@ -89,9 +130,18 @@ class StateController extends Controller
      * @param  \App\Models\State  $state
      * @return \Illuminate\Http\Response
      */
-    public function destroy(State $state)
+    public function destroy($id)
     {
-        $state = $state->delete();
+        $state = State::find($id);
+
+        if(! $state) {
+            return response()->json('State Not Found');
+        }
+
+        $this->state->removeState($state);
+
+        cache()->forget('state:'. $state->id);
+        cache()->forget('state:all');
 
         return response()->json([
             'message' => 'State deleted successfully !'

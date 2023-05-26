@@ -1,14 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\StaffRoom;
 use App\Http\Resources\StaffRoomResource;
 use App\Http\Requests\StoreStaffRoomRequest;
 use App\Http\Requests\UpdateStaffRoomRequest;
+use App\Repository\Admin\StaffRoom\StaffRoomRepository;
 
 class StaffRoomController extends Controller
 {
+
+    public $staffRoom;
+
+    public function __construct(StaffRoomRepository $staffRoom)
+    {
+        $this->staffRoom = $staffRoom;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +27,13 @@ class StaffRoomController extends Controller
      */
     public function index()
     {
-        $staffRooms = StaffRoom::orderBy('created_at', 'DESC')->get();
+        $staffRooms = cache()->rememberForever('staffRoom:all', function () {
+            return StaffRoom::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($staffRooms->isEmpty()) {
+            return response()->json('Staff Room Is Empty');
+        }
 
         return StaffRoomResource::collection($staffRooms);
     }
@@ -39,12 +56,15 @@ class StaffRoomController extends Controller
      */
     public function store(StoreStaffRoomRequest $request)
     {
-        $staffRoom = new StaffRoom;
-        $staffRoom->teacher_id = $request->input('teacher_id');
-        $staffRoom->room_no = $request->input('room_no');
-        $staffRoom->save();
+        $data = $request->all();
 
-        return new StaffRoomResource($staffRoom);
+        $this->staffRoom->savestaffRoom($request, $data);
+
+        cache()->forget('staffRoom:all');
+
+        return response()->json([
+            'message' => 'staffRoom Saved Successfully'
+        ]);
     }
 
     /**
@@ -53,9 +73,19 @@ class StaffRoomController extends Controller
      * @param  \App\Models\StaffRoom  $staffRoom
      * @return \Illuminate\Http\Response
      */
-    public function show(StaffRoom $staffRoom)
+    public function show($id)
     {
-        return new StaffRoomResource($staffRoom);
+        $staffRoom = StaffRoom::find($id);
+
+        if(! $staffRoom) {
+            return response()->json('StaffRoom Not Found');
+        }
+
+        $staffRoomShow = cache()->rememberForever('staffRoom:'. $staffRoom->id, 60, function () use($staffRoom) {
+            return $staffRoom;
+        });
+
+        return new StaffRoomResource($staffRoomShow);
     }
 
     /**
@@ -76,13 +106,24 @@ class StaffRoomController extends Controller
      * @param  \App\Models\StaffRoom  $staffRoom
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateStaffRoomRequest $request, StaffRoom $staffRoom)
+    public function update(UpdateStaffRoomRequest $request,  $id)
     {
-        $staffRoom->teacher_id = $request->input('teacher_id');
-        $staffRoom->room_no = $request->input('room_no');
-        $staffRoom->update();
+        $staffRoom = StaffRoom::find($id);
 
-        return new StaffRoomResource($staffRoom);
+        if(! $staffRoom) {
+            return response()->json('StaffRoom Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->staffRoom->updatestaffRoom($request, $staffRoom, $data);
+
+        cache()->forget('staffRoom:'. $staffRoom->id);
+        cache()->forget('staffRoom:all');
+
+        return response()->json([
+            'message' => 'staffRoom Updated Successfully'
+        ]);
     }
 
     /**
@@ -91,9 +132,18 @@ class StaffRoomController extends Controller
      * @param  \App\Models\StaffRoom  $staffRoom
      * @return \Illuminate\Http\Response
      */
-    public function destroy(StaffRoom $staffRoom)
+    public function destroy($id)
     {
-        $staffRoom = $staffRoom->delete();
+        $staffRoom = StaffRoom::find($id);
+
+        if(! $staffRoom) {
+            return response()->json('StaffRoom Not Found');
+        }
+
+        $this->staffRoom->removestaffRoom($staffRoom);
+
+        cache()->forget('staffRoom:'. $staffRoom->id);
+        cache()->forget('staffRoom:all');
 
         return response()->json([
             'message' => 'StaffRoom Deleted Successfully !'

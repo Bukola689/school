@@ -15,7 +15,7 @@ class StudentReportCardController extends Controller
         
         if(Auth::id())
         {    
-            $reportCard = ReportCard::with('student')->where('user_id', Auth::id())->get();
+            $reportCard = ReportCard::with(['classtype','term','subject','student','session','cat1','cat2','cat3','examination'])->where('user_id', Auth::id())->get();
 
 
             return response()->json([

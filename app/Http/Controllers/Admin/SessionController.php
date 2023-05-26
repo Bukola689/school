@@ -1,14 +1,26 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Session;
 use App\Http\Resources\SessionResource;
 use App\Http\Requests\StoreSessionRequest;
 use App\Http\Requests\UpdateSessionRequest;
+use App\Repository\Admin\SessionRepository;
+use Illuminate\Support\Facades\Cache;
 
 class SessionController extends Controller
 {
+
+    public $session;
+
+    public function __construct(SessionRepository $session)
+    {
+        $this->session = $session;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +28,13 @@ class SessionController extends Controller
      */
     public function index()
     {
-        $sessions = Session::orderBy('created_at', 'DESC')->get();
+        $sessions = Cache::remember('sessions', 60, function () {
+            return Session::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($sessions->isEmpty()) {
+            return response()->json('Session Is Empty');
+        }
 
         return SessionResource::Collection($sessions);
     }
@@ -39,11 +57,16 @@ class SessionController extends Controller
      */
     public function store(StoreSessionRequest $request)
     {
-        $session = new Session;
-        $session->sec_year = $request->input('sec_year');
-        $session->save();
+      
+        $data = $request->all();
 
-        return new SessionResource($session);
+        $this->session->saveSession($request, $data);
+
+        cache()->forget('session:all');
+
+        return response()->json([
+            'message' => 'Session Saved Successfully'
+        ]);
     }
 
     /**
@@ -52,9 +75,19 @@ class SessionController extends Controller
      * @param  \App\Models\Session  $session
      * @return \Illuminate\Http\Response
      */
-    public function show(Session $session)
+    public function show($id)
     {
-        return new SessionResource($session);
+        $session = Session::find($id);
+
+        if(! $session) {
+            return response()->json('Session Not Found');
+        }
+
+        $sessionShow = cache()->rememberForever('session:'. $session->id, function () use($session) {
+            return $session;
+        });
+
+        return new SessionResource($sessionShow);
     }
 
     /**
@@ -75,12 +108,26 @@ class SessionController extends Controller
      * @param  \App\Models\Session  $session
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateSessionRequest $request, Session $session)
+    public function update(UpdateSessionRequest $request, $id)
     {
-        $session->sec_year = $request->input('sec_year');
-        $session->update();
+        $session = Session::find($id);
 
-        return new SessionResource($session);
+        if(! $session) {
+            return response()->json('Session Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->session->updateSession($request, $session, $data);
+
+        cache()->forget('session:'. $session->id);
+        cache()->forget('session:all');
+
+        return response()->json([
+            'message' => 'Session Updated Successfully'
+        ]);
+
+        
     }
 
     /**
@@ -89,9 +136,18 @@ class SessionController extends Controller
      * @param  \App\Models\Session  $session
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Session $session)
+    public function destroy($id)
     {
-        $session = $session->delete();
+        $session = Session::find($id);
+
+        if(! $session) {
+            return response()->json('Session Not Found');
+        }
+        
+        $this->session->removeSession($session);
+        
+        cache()->forget('session:'. $session->id);
+        cache()->forget('session:all');
 
         return response()->json([
             'message' => 'Session deleted successfully !'

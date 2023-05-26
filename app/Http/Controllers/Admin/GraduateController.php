@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Graduate;
 use App\Http\Resources\GraduateResource;
 use App\Http\Requests\StoreGraduateRequest;
 use App\Http\Requests\UpdateGraduateRequest;
+use App\Repository\Admin\Graduate\GraduateRepository;
 
 class GraduateController extends Controller
 {
+    public $graduate;
+
+    public function __construct(GraduateRepository $graduate)
+    {
+        $this->graduate = $graduate;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,8 +25,14 @@ class GraduateController extends Controller
      */
     public function index()
     {
-        $graduates = Graduate::orderBy('created_at', 'DESC')->get();
+        $graduates = cache()->rememberForever('graduate:all', function () {
+            return  Graduate::orderBy('created_at', 'DESC')->get();
+        });
 
+        if($graduates->isEmpty()) {
+            return response()->json('Graduate Is Empty');
+        }
+        
         return GraduateResource::collection($graduates);
     }
 
@@ -40,15 +55,16 @@ class GraduateController extends Controller
     public function store(StoreGraduateRequest $request)
     {
 
-        //dd($request->all());
-        $graduate = new Graduate;
-        $graduate->class_type_id = $request->input('class_type_id');
-        $graduate->term_id = $request->input('term_id');
-        $graduate->session_id = $request->input('session_id');
-        $graduate->student_id = $request->input('student_id');
-        $graduate->save();
+        $data = $request->all();
 
-        return new GraduateResource($graduate);
+        $this->graduate->saveGraduate($request, $data);
+
+        cache()->forget('graduate:all');
+
+        return response()->json([
+            'message' => 'graduate Saved Successfully'
+        ]);
+
     }
 
     /**
@@ -57,9 +73,19 @@ class GraduateController extends Controller
      * @param  \App\Models\Graduate  $graduate
      * @return \Illuminate\Http\Response
      */
-    public function show(Graduate $graduate)
+    public function show($id)
     {
-        return new GraduateResource($graduate);
+        $graduate = Graduate::find($id);
+
+        if(! $graduate) {
+            return response()->json('Graduat Not Found');
+        }
+
+        $graduateShow = cache()->rememberForever('graduate:'. $graduate->id, function () use($graduate) {
+            return $graduate;
+        });
+
+        return new GraduateResource($graduateShow);
     }
 
     /**
@@ -70,7 +96,7 @@ class GraduateController extends Controller
      */
     public function edit(Graduate $graduate)
     {
-        //
+       //
     }
 
     /**
@@ -80,15 +106,24 @@ class GraduateController extends Controller
      * @param  \App\Models\Graduate  $graduate
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateGraduateRequest $request, Graduate $graduate)
+    public function update(UpdateGraduateRequest $request, $id)
     {
-        $graduate->class_type_id = $request->input('class_type_id');
-        $graduate->term_id = $request->input('term_id');
-        $graduate->session_id = $request->input('session_id');
-        $graduate->student_id = $request->input('student_id');
-        $graduate->update();
+        $graduate = Graduate::find($id);
 
-        return new GraduateResource($graduate);
+        if(! $graduate) {
+            return response()->json('Graduat Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->graduate->updateGraduate($request, $graduate, $data);
+
+        cache()->forget('graduate:'. $graduate->id);
+        cache()->forget('graduate:all');
+
+        return response()->json([
+            'message' => 'Graduate Updated Successfully'
+        ]);   return new GraduateResource($graduate);
     }
 
     /**
@@ -97,9 +132,18 @@ class GraduateController extends Controller
      * @param  \App\Models\Graduate  $graduate
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Graduate $graduate)
+    public function destroy($id)
     {
-        $graduate = $graduate->delete();
+        $graduate = Graduate::find($id);
+
+        if(! $graduate) {
+            return response()->json('Graduat Not Found');
+        }
+
+        $this->graduate->removeGraduate($graduate);
+
+        cache()->forget('graduate:'. $graduate->id);
+        cache()->forget('graduate:all');
 
         return response()->json([
             'message' => 'Graduate deleted successfully'

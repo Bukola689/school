@@ -15,7 +15,7 @@ class CreateTeachersTable extends Migration
     {
         Schema::create('teachers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constained();
+            $table->integer('user_id')->constained();
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->string('gender')->nullable();

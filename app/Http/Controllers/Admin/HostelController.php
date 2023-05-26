@@ -1,14 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\Hostel;
 use App\Http\Resources\HostelResource;
 use App\Http\Requests\StoreHostelRequest;
 use App\Http\Requests\UpdateHostelRequest;
+use App\Repository\Admin\Hostel\HostelRepository;
 
 class HostelController extends Controller
 {
+
+    public $hostel;
+
+    public function __construct(HostelRepository $hostel)
+    {
+        $this->hostel = $hostel;
+    }
+
+
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +27,13 @@ class HostelController extends Controller
      */
     public function index()
     {
-        $hostels = Hostel::orderBy('created_at', 'DESC')->get();
+        $hostels =  cache()->rememberForever('hostel:all', function () {
+            return  Hostel::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($hostels->isEmpty()) {
+            return response()->json('Hostel Is Empty');
+        }
 
         return HostelResource::collection($hostels);
     }
@@ -39,13 +56,15 @@ class HostelController extends Controller
      */
     public function store(StoreHostelRequest $request)
     {
-        $hostel = new Hostel;
-        $hostel->student_id = $request->input('student_id');
-        $hostel->block = $request->input('block');
-        $hostel->room_no = $request->input('room_no');
-        $hostel->save();
+        $data = $request->all();
 
-        return new HostelResource($hostel);
+        $this->hostel->saveHostel($request, $data);
+
+        cache()->forget('hostel:all');
+
+        return response()->json([
+            'message' => 'Hostel Saved Successfully'
+        ]);
     }
 
     /**
@@ -54,9 +73,19 @@ class HostelController extends Controller
      * @param  \App\Models\Hostel  $hostel
      * @return \Illuminate\Http\Response
      */
-    public function show(Hostel $hostel)
+    public function show($id)
     {
-        return new HostelResource($hostel);
+        $hostel = Hostel::find($id);
+
+        if(! $hostel) {
+            return response()->json('Hostel Not Found');
+        }
+
+        $hostelShow = cache()->rememberForever('hostel:'. $hostel->id, function () use($hostel) {
+            return $hostel;
+        });
+
+        return new HostelResource($hostelShow);
     }
 
     /**
@@ -77,14 +106,25 @@ class HostelController extends Controller
      * @param  \App\Models\Hostel  $hostel
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateHostelRequest $request, Hostel $hostel)
+    public function update(UpdateHostelRequest $request, $id)
     {
-        $hostel->student_id = $request->input('student_id');
-        $hostel->block = $request->input('block');
-        $hostel->room_no = $request->input('room_no');
-        $hostel->update();
+        $hostel = Hostel::find($id);
 
-        return new HostelResource($hostel);
+        if(! $hostel) {
+            return response()->json('Hostel Not Found');
+        }
+
+       
+        $data = $request->all();
+
+        $this->hostel->updateHostel($request, $hostel, $data);
+
+        cache()->forget('hostel:'. $hostel->id);
+        cache()->forget('hostel:all');
+
+        return response()->json([
+            'message' => 'Hostel Updated Successfully'
+        ]);
     }
 
     /**
@@ -93,9 +133,18 @@ class HostelController extends Controller
      * @param  \App\Models\Hostel  $hostel
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Hostel $hostel)
+    public function destroy($id)
     {
-        $hostel = $hostel->delete();
+        $hostel = Hostel::find($id);
+
+        if(! $hostel) {
+            return response()->json('Hostel Not Found');
+        }
+       
+        $this->hostel->removeHostel($hostel);
+
+        cache()->forget('hostel:'. $hostel->id);
+        cache()->forget('hostel:all');
 
         return response()->json([
             'message' => 'Hostel Deleted Successfully !'

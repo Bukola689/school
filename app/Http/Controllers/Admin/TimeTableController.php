@@ -1,15 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\TimeTable;
 use Carbon\Carbon;
 use App\Http\Resources\TimeTableResource;
 use App\Http\Requests\StoreTimeTableRequest;
 use App\Http\Requests\UpdateTimeTableRequest;
+use App\Repository\Admin\TimeTable\TimeTableRepository;
 
 class TimeTableController extends Controller
 {
+
+    public $timetable;
+
+    public function __construct( TimeTableRepository $timetable)
+    {
+        $this->timetable = $timetable;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -17,7 +27,13 @@ class TimeTableController extends Controller
      */
     public function index()
     {
-        $timetables = TimeTable::all();
+        $timetables =  cache()->rememberForever('timeTable:all', function () {
+            return TimeTable::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($timetables->isEmpty()) {
+            return response()->json('timetables Is Empty');
+        }
 
         return TimeTableResource::collection($timetables);
     }
@@ -41,16 +57,15 @@ class TimeTableController extends Controller
     public function store(StoreTimeTableRequest $request)
     {
 
-        $timeTable = new TimeTable;
-        $timeTable->class_type_id = $request->input('class_type_id');
-        $timeTable->term_id = $request->input('term_id');
-        $timeTable->subject_id = $request->input('subject_id');
-        $timeTable->teacher_id = $request->input('teacher_id');
-        $timeTable->session_id = $request->input('session_id');
-        $timeTable->created_at = Carbon::now();;
-        $timeTable->save();
+      $data = $request->all();
 
-        return new TimeTableResource($timeTable);
+      $this->timetable->saveTimetable($request, $data);
+
+      cache()->forget('timeTable:all');
+
+        return response()->json([
+            'message' => 'Time Table Saved Succesfully'
+        ]);
     }
 
     /**
@@ -59,9 +74,19 @@ class TimeTableController extends Controller
      * @param  \App\Models\TimeTable  $timeTable
      * @return \Illuminate\Http\Response
      */
-    public function show(TimeTable $timeTable)
+    public function show($id)
     {
-        return new TimeTableResource($timeTable);
+        $timeTable = TimeTable::find($id);
+
+        if(! $timeTable) {
+            return response()->json('timeTable Not Found');
+        }
+
+        $timeTableShow = cache()->rememberForever('timeTable:'. $timeTable->id, function () use($timeTable) {
+            return $timeTable;
+        });
+
+        return new TimeTableResource($timeTableShow);
     }
 
     /**
@@ -82,17 +107,24 @@ class TimeTableController extends Controller
      * @param  \App\Models\TimeTable  $timeTable
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateTimeTableRequest $request, TimeTable $timeTable)
+    public function update(UpdateTimeTableRequest $request, $id)
     {
-        $timeTable->class_type_id = $request->input('class_type_id');
-        $timeTable->term_id = $request->input('term_id');
-        $timeTable->subject_id = $request->input('subject_id');
-        $timeTable->teacher_id = $request->input('teacher_id');
-        $timeTable->session_id = $request->input('session_id');
-        $timeTable->created_at = Carbon::now();
-        $timeTable->update();
+        $timeTable = TimeTable::find($id);
 
-        return new TimeTableResource($timeTable);
+        if(! $timeTable) {
+            return response()->json('timeTable Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->timetable->updateTimetable($request, $timeTable,$data);
+
+        cache()->forget('timeTable:'. $timeTable->id);
+        cache()->forget('timeTable:all');
+  
+          return response()->json([
+              'message' => 'Time Table Updated Succesfully'
+          ]);
     }
 
     /**
@@ -101,9 +133,18 @@ class TimeTableController extends Controller
      * @param  \App\Models\TimeTable  $timeTable
      * @return \Illuminate\Http\Response
      */
-    public function destroy(TimeTable $timeTable)
+    public function destroy($id)
     {
-        $timeTable = $timeTable->delete();
+        $timeTable = TimeTable::find($id);
+
+        if(! $timeTable) {
+            return response()->json('timeTable Not Found');
+        }
+
+        $this->timetable->removeTimetable($timeTable);
+
+        cache()->forget('timeTable:'. $timeTable->id);
+        cache()->forget('timeTable:all');
 
         return response()->json([
             'status' => true,

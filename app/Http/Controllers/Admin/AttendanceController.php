@@ -8,10 +8,20 @@ use Carbon\Carbon;
 use App\Http\Resources\AttendanceResource;
 use App\Http\Requests\StoreAttendanceRequest;
 use App\Http\Requests\UpdateAttendanceRequest;
+use App\Repository\Admin\Attendance\AttendanceRepository;
+use Illuminate\Filesystem\Cache;
 use Illuminate\Http\Request;
 
 class AttendanceController extends Controller
 {
+    public $attendance;
+
+    public function __construct( AttendanceRepository $attendance)
+    {
+        $this->attendance = $attendance;
+    }
+
+
     /**
      * Display a listing of the resource.
      *
@@ -19,7 +29,13 @@ class AttendanceController extends Controller
      */
     public function index()
     {
-        $attendances = Attendance::orderBy('created_at', 'DESC')->get();
+        $attendances = cache()->rememberForever('attendance:all', function () {
+           return  Attendance::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($attendances->isEmpty()) {
+            return response()->json('Attendance Is Empty');
+        }
 
         return AttendanceResource::collection($attendances);
     }
@@ -42,15 +58,15 @@ class AttendanceController extends Controller
      */
     public function store(StoreAttendanceRequest $request)
     {
-        $attendance = new Attendance;
-        $attendance->student_id = $request->input('student_id');
-        $attendance->class_type_id = $request->input('class_type_id');
-        $attendance->teacher_id = $request->input('teacher_id');
-        $attendance->status = 'absent';
-        $attendance->att_date = Carbon::now();
-        $attendance->save();
+        $data = $request->all();
 
-        return new AttendanceResource($attendance);
+       $this->attendance->saveAttendance($request, $data);
+
+       cache()->forget('attendance:all');
+
+        return response()->json([
+            'message' => 'Attendance Saved Successfully'
+        ]);
     }
 
     /**
@@ -59,9 +75,19 @@ class AttendanceController extends Controller
      * @param  \App\Models\Attendance  $attendance
      * @return \Illuminate\Http\Response
      */
-    public function show(Attendance $attendance)
+    public function show( $id)
     {
-        return new AttendanceResource($attendance);
+        $attendance = Attendance::find($id);
+
+        if(! $attendance) {
+            return response()->json('Attendance Not Found');
+        }
+
+        $attendanceShow = cache()->rememberForever('attendance:'. $attendance->id, function () use ($attendance) {
+            return $attendance;
+        });
+        
+        return new AttendanceResource($attendanceShow);
     }
 
     /**
@@ -88,16 +114,24 @@ class AttendanceController extends Controller
      * @param  \App\Models\Attendance  $attendance
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateAttendanceRequest $request, Attendance $attendance)
+    public function update(UpdateAttendanceRequest $request, $id)
     {
-        $attendance->student_id = $request->input('student_id');
-        $attendance->class_type_id= $request->input('class_type_id');
-        $attendance->teacher_id = $request->input('teacher_id');
-        $attendance->att_date = 'absent';
-        $attendance->att_date = Carbon::now();
-        $attendance->update();
+        $attendance = Attendance::find($id);
 
-        return new AttendanceResource($attendance);
+        if(! $attendance) {
+            return response()->json('Attendance Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->attendance->updateAttendance($request, $attendance, $data);
+
+        cache()->forget('attendance:'. $attendance->id);
+        cache()->forget('attendance:all');
+ 
+         return response()->json([
+             'message' => 'Attendance Updated Successfully'
+         ]);
     }
 
     /**
@@ -106,9 +140,18 @@ class AttendanceController extends Controller
      * @param  \App\Models\Attendance  $attendance
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Attendance $attendance)
+    public function destroy($id)
     {
-        $attendance = $attendance->delete();
+        $attendance = Attendance::find($id);
+
+        if(! $attendance) {
+            return response()->json('Attendance Not Found');
+        }
+       
+        $this->attendance->removeAttendance($attendance);
+
+        cache()->forget('attendance:'. $attendance->id);
+        cache()->forget('attendance:all');
 
         return response()->json([
             'message' => 'Attendance Deleted Successfully !'

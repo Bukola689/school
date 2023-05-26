@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\Country;
 use App\Http\Resources\CountryResource;
 use App\Http\Requests\StoreCountryRequest;
 use App\Http\Requests\UpdateCountryRequest;
+use App\Repository\Admin\CountryRepository;
 
 class CountryController extends Controller
 {
+    public $country;
+
+    public function __construct(CountryRepository $country)
+    {
+        $this->country = $country;
+    }
     /**
      * Display a listing of the resource.
      *
@@ -16,7 +25,13 @@ class CountryController extends Controller
      */
     public function index()
     {
-        $countries = Country::orderBy('created_at', 'DESC')->get();
+        $countries = cache()->rememberForever('country:all', function () {
+            Country::orderBy('created_at', 'DESC')->get();
+        });
+
+        if($countries->isEmpty()) {
+            return response()->json('Country Is Empty');
+        }
 
         return CountryResource::collection($countries);
     }
@@ -39,12 +54,15 @@ class CountryController extends Controller
      */
     public function store(StoreCountryRequest $request)
     {
-       //dd($request->all());
-        $country = new Country;
-        $country->name = $request->input('name');
-        $country->save();
+       $data = $request->all();
 
-        return new CountryResource($country);
+       $this->country->saveCountry($request, $data);
+
+       cache()->forget('country:all');
+
+        return response()->json([
+            'message' => 'Country Saved Successfully'
+        ]);
     }
 
     /**
@@ -53,9 +71,19 @@ class CountryController extends Controller
      * @param  \App\Models\COuntry  $cOuntry
      * @return \Illuminate\Http\Response
      */
-    public function show(Country $country)
+    public function show($id)
     {
-        return new CountryResource($country);
+        $country = Country::find($id);
+
+        if(! $country) {
+            return response()->json('Country Not Found');
+        }
+
+        $countryShow = cache()->rememberForever('country:'. $country->id, function () use($country) {
+            return $country;
+        });
+
+        return new CountryResource($countryShow);
     }
 
     /**
@@ -76,10 +104,24 @@ class CountryController extends Controller
      * @param  \App\Models\COuntry  $cOuntry
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateCountryRequest $request, Country $country)
+    public function update(UpdateCountryRequest $request, $id)
     {
-        $country->name = $request->input('name');
-        $country->update();
+        $country = Country::find($id);
+
+        if(! $country) {
+            return response()->json('Country Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->country->updateCountry($request, $country, $data);
+
+        cache()->forget('country:'. $country->id);
+        cache()->forget('country:all');
+ 
+         return response()->json([
+             'message' => 'Country Updated Successfully'
+         ]);
 
         return new CountryResource($country);
     }
@@ -90,9 +132,18 @@ class CountryController extends Controller
      * @param  \App\Models\COuntry  $cOuntry
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Country $country)
+    public function destroy($id)
     {
-        $country = $country->delete();
+        $country = Country::find($id);
+
+        if(! $country) {
+            return response()->json('CountryNot Found');
+        }
+
+        $this->country->removeCountry($country);
+
+        cache()->forget('country:'. $country->id);
+        cache()->forget('country:all');
 
         return response()->json([
             'status' => 'Country Deleted Successfully !'

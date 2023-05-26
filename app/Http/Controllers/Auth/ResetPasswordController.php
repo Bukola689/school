@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Events\Auth\ResetPassword;
 use App\Http\Controllers\Controller;
 use App\Mail\PasswordChangedMail;
 use App\Models\PasswordReset;
@@ -57,6 +58,8 @@ class ResetPasswordController extends Controller
         }
 
         $user->update(['password' => Hash::make($request->password)]);
+
+        event(new ResetPassword($user));
 
         return "Password reset successfully";
     }

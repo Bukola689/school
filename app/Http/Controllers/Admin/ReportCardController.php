@@ -1,14 +1,23 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Controller;
 use App\Models\ReportCard;
 use App\Http\Resources\ReportCardResource;
 use App\Http\Requests\StoreReportCardRequest;
 use App\Http\Requests\UpdateReportCardRequest;
+use App\Repository\Admin\ReportCard\ReportCardRepository;
 
 class ReportCardController extends Controller
 {
+    public $reportCard;
+
+    public function __construct(ReportCardRepository $reportCard)
+    {
+        $this->reportCard = $reportCard;
+    }
+
     /**
      * Display a listing of the resource.
      *
@@ -16,8 +25,13 @@ class ReportCardController extends Controller
      */
     public function index()
     {
-        $reportCards = ReportCard::orderBy('id', 'desc')->get();
+        $reportCards = cache()->rememberForever('reportCard:all', function () {
+            return ReportCard::orderBy('id', 'desc')->get();
+        });
 
+        if($reportCards->isEmpty()) {
+            return response()->json('Report Card Is Empty');
+        }
         
         return ReportCardResource::collection($reportCards);
     }
@@ -40,23 +54,15 @@ class ReportCardController extends Controller
      */
     public function store(StoreReportCardRequest $request)
     {
-        $reportCard = new ReportCard;
-        $reportCard->class_type_id = $request->input('class_type_id');
-        $reportCard->term_id = $request->input('term_id');
-        $reportCard->subject_id = $request->input('subject_id');
-        $reportCard->teacher_id = $request->input('teacher_id');
-        $reportCard->session_id = $request->input('session_id');
-        $reportCard->student_id = $request->input('student_id');
-        $reportCard->cat1_id = $request->input('cat1_id');
-        $reportCard->cat2_id = $request->input('cat2_id');
-        $reportCard->cat3_id = $request->input('cat3_id');
-        $reportCard->examination_id = $request->input('examination_id');
-        $reportCard->position = $request->input('position');
-        $reportCard->percentage = $request->input('percentage');
-        $reportCard->comments = $request->input('comments');
-        $reportCard->save();
+        $data = $request->all();
 
-        return new ReportCardResource($reportCard);
+       $this->reportCard->saveReportCard($request, $data);
+
+       cache()->forget('reportCard:all');
+
+        return response()->json([
+            'message' => 'Report Card Saved Successfully'
+        ]);
     }
 
     /**
@@ -65,9 +71,20 @@ class ReportCardController extends Controller
      * @param  \App\Models\ReportCard  $reportCard
      * @return \Illuminate\Http\Response
      */
-    public function show(ReportCard $reportCard)
+    public function show($id)
     {
-        return new ReportCardResource($reportCard);
+        $reportCard = ReportCard::find($id);
+
+        if(! $reportCard) {
+            return response()->json('ReportCard Not Found');
+        }
+
+        $reportCardShow = cache()->rememberForever('reportCard:'. $reportCard->id, 60, function () use($reportCard) {
+            return $reportCard;
+        });
+
+
+        return new ReportCardResource($reportCardShow);
     }
 
     /**
@@ -88,24 +105,24 @@ class ReportCardController extends Controller
      * @param  \App\Models\ReportCard  $reportCard
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateReportCardRequest $request, ReportCard $reportCard)
+    public function update(UpdateReportCardRequest $request, $id)
     {
-        $reportCard->class_type_id = $request->input('class_type_id');
-        $reportCard->term_id = $request->input('term_id');
-        $reportCard->subject_id = $request->input('subject_id');
-        $reportCard->teacher_id = $request->input('teacher_id');
-        $reportCard->session_id = $request->input('session_id');
-        $reportCard->student_id = $request->input('student_id');
-        $reportCard->cat1_id = $request->input('cat1_id');
-        $reportCard->cat2_id = $request->input('cat2_id');
-        $reportCard->cat3_id = $request->input('cat3_id');
-        $reportCard->examination_id = $request->input('examination_id');
-        $reportCard->position = $request->input('position');
-        $reportCard->percentage = $request->input('percentage');
-        $reportCard->comments = $request->input('comments');
-        $reportCard->update();
+        $reportCard = ReportCard::find($id);
 
-        return new ReportCardResource($reportCard);
+        if(! $reportCard) {
+            return response()->json('ReportCard Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->reportCard->updateReportCard($request, $reportCard, $data);
+
+        cache()->forget('reportCard:'. $reportCard->id);
+        cache()->forget('reportCard:all');
+ 
+         return response()->json([
+             'message' => 'Report Card Updated Successfully'
+         ]);
     }
 
     /**
@@ -114,9 +131,18 @@ class ReportCardController extends Controller
      * @param  \App\Models\ReportCard  $reportCard
      * @return \Illuminate\Http\Response
      */
-    public function destroy(ReportCard $reportCard)
+    public function destroy($id)
     {
-        $reportCard = $reportCard->delete();
+        $reportCard = ReportCard::find($id);
+
+        if(! $reportCard) {
+            return response()->json('ReportCard Not Found');
+        }
+
+        $this->reportCard->removeReportCard($reportCard);
+
+        cache()->forget('reportCard:'. $reportCard->id);
+        cache()->forget('reportCard:all');
 
         return response()->json([
             'message' => 'ReportCard deleted successfully'

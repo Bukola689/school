@@ -24,7 +24,6 @@ class StoreTeacherRequest extends FormRequest
     public function rules()
     {
         return [
-            'user_id' => 'required',
             'first_name' => 'required',
             'last_name' => 'required',
             'age' => 'required',

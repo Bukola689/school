@@ -21,10 +21,9 @@ class ForgotPasswordController extends Controller
             return "Email does not exist.";
         }
 
-
-        // if ($user->is_locked) {
-        //     return response()->json('This action cannot be performed while your account is locked.');
-        // }
+        if ($user->is_locked) {
+            return response()->json('This action cannot be performed while your account is locked.');
+        }
 
         $reset = PasswordReset::createToken($request->email);
 

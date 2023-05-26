@@ -1,15 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
 
 use App\Models\MarkSheet;
 use Carbon\Carbon;
 use App\Http\Resources\MarkSheetResource;
 use App\Http\Requests\StoreMarkSheetRequest;
 use App\Http\Requests\UpdateMarkSheetRequest;
+use App\Repository\Admin\Marksheet\MarksheetRepository;
 
 class MarkSheetController extends Controller
 {
+    public $markSheet;
+
+    public function __construct(MarksheetRepository $markSheet)
+    {
+        $this->markSheet = $markSheet;
+    }
+    
     /**
      * Display a listing of the resource.
      *
@@ -17,7 +27,14 @@ class MarkSheetController extends Controller
      */
     public function index()
     {
-        $marksheets = MarkSheet::orderBy('created_at', 'DESC')->get();
+        $marksheets = cache()->rememberForever('markSheet:all', function () {
+            return  MarkSheet::orderBy('created_at', 'DESC')->get();
+        });
+        
+        if($marksheets->isEmpty()) {
+            return response()->json('Mark SHeet Is Empty');
+        }
+
 
         return MarkSheetResource::collection($marksheets);
     }
@@ -40,21 +57,16 @@ class MarkSheetController extends Controller
      */
     public function store(StoreMarkSheetRequest $request)
     {
-        $markSheet = new MarkSheet;
-        $markSheet->term_id = $request->input('term_id');
-        $markSheet->class_type_id = $request->input('class_type_id');
-        $markSheet->student_id = $request->input('student_id');
-        $markSheet->subject_id = $request->input('subject_id');
-        $markSheet->session_id = $request->input('session_id');
-        $markSheet->teacher_id = $request->input('teacher_id');
-        $markSheet->mark_date = Carbon::now();
-        $markSheet->cat1_id = $request->input('cat1_id');
-        $markSheet->cat2_id = $request->input('cat2_id');
-        $markSheet->cat3_id = $request->input('cat3_id');
-        $markSheet->examination_id = $request->input('examination_id');
-        $markSheet->save();
+        $data = $request->all();
 
-        return new MarkSheetResource($markSheet);
+       $this->markSheet->saveMarkSheet($request, $data);
+
+       cache()->forget('markSheet:all');
+
+        return response()->json([
+            'message' => 'Mark Sheet Saved Successfully'
+        ]);
+
     }
 
     /**
@@ -63,9 +75,19 @@ class MarkSheetController extends Controller
      * @param  \App\Models\MarkSheet  $markSheet
      * @return \Illuminate\Http\Response
      */
-    public function show(MarkSheet $markSheet)
+    public function show($id)
     {
-        return new MarkSheetResource($markSheet);
+        $markSheet = MarkSheet::find($id);
+
+        if(! $markSheet) {
+            return response()->json('MarkSheet Not Found');
+        }
+
+        $markSheetId = cache()->rememberForever('markSheet:'. $markSheet->id, function () use($markSheet) {
+            return $markSheet;
+        });
+
+        return new MarkSheetResource($markSheetId);
     }
 
     /**
@@ -86,22 +108,25 @@ class MarkSheetController extends Controller
      * @param  \App\Models\MarkSheet  $markSheet
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateMarkSheetRequest $request, MarkSheet $markSheet)
+    public function update(UpdateMarkSheetRequest $request, $id)
     {
-        $markSheet->term_id = $request->input('term_id');
-        $markSheet->class_type_id = $request->input('class_type_id');
-        $markSheet->student_id = $request->input('student_id');
-        $markSheet->subject_id = $request->input('subject_id');
-        $markSheet->session_id = $request->input('session_id');
-        $markSheet->teacher_id = $request->input('teacher_id');
-        $markSheet->mark_date = Carbon::now();
-        $markSheet->cat1_id = $request->input('cat1_id');
-        $markSheet->cat2_id = $request->input('cat2_id');
-        $markSheet->cat3_id = $request->input('cat3_id');
-        $markSheet->examination_id = $request->input('examination_id');
-        $markSheet->update();
+        $markSheet = MarkSheet::find($id);
 
-        return new MarkSheetResource($markSheet);
+        if(! $markSheet) {
+            return response()->json('MarkSheet Not Found');
+        }
+
+        $data = $request->all();
+
+        $this->markSheet->updateMarkSheet($request, $markSheet, $data);
+
+        cache()->forget('markSheet:'. $markSheet->id);
+        cache()->forget('markSheet:all');
+
+        return response()->json([
+            'message' => 'Marksheet Updated Successfully'
+        ]);
+
     }
 
     /**
@@ -110,9 +135,18 @@ class MarkSheetController extends Controller
      * @param  \App\Models\MarkSheet  $markSheet
      * @return \Illuminate\Http\Response
      */
-    public function destroy(MarkSheet $markSheet)
+    public function destroy( $id)
     {
-        $markSheet = $markSheet->delete();
+        $markSheet = MarkSheet::find($id);
+
+        if(! $markSheet) {
+            return response()->json('MarkSheet Not Found');
+        }
+
+        $this->markSheet->removeMarkSheet($markSheet);
+
+        cache()->forget('markSheet:'. $markSheet->id);
+        cache()->forget('markSheet:all');
 
         return response()->json([
             'message' => 'MarkSheet deleted successfully'

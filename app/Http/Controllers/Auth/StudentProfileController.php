@@ -31,7 +31,7 @@ class StudentProfileController extends Controller
 
         'first_name' => 'required',
         'last_name' => 'required',
-        'age' => 'required|min:12',
+        'age' => 'required|min:1',
         'occupation_id' => 'required',
         'd_o_b' => 'required',
         'gender' => 'required',
@@ -63,7 +63,7 @@ class StudentProfileController extends Controller
         $student->image = 'students/image/' . $image_new_name;
       }
 
-      //$student->user_id = $request->input('user_id');
+      $student->user_id = Auth::user()->id;
       $student->first_name = $request->input('first_name');
       $student->last_name = $request->input('last_name');
       $student->age = $request->input('age');

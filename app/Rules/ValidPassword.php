@@ -66,7 +66,7 @@ class ValidPassword implements Rule
         $this->lengthPasses = (Str::length($value) >= 8);
         $this->upperCasePasses = (Str::lower($value) !== $value);
         $this->numericPasses = ((bool) preg_match('/[0-9]/', $value));
-        //$this->specialCharacterPasses = ((bool) preg_match('/[^A-Za-z0-9]/', $value));
+        $this->specialCharacterPasses = ((bool) preg_match('/[^A-Za-z0-9]/', $value));
 
         return $this->lengthPasses && $this->upperCasePasses && $this->numericPasses && $this->specialCharacterPasses;
     }
